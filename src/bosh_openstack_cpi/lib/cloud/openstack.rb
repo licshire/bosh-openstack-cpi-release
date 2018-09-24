@@ -49,6 +49,7 @@ require 'cloud/openstack/server_groups'
 require 'cloud/openstack/server'
 require 'cloud/openstack/vm_factory'
 require 'cloud/openstack/vm_creator'
+require 'cloud/openstack/noop_registry'
 
 module Bosh
   module Clouds
