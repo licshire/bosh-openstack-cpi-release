@@ -136,6 +136,7 @@ module Bosh::OpenStackCloud
     def create_vm(agent_id, stemcell_id, cloud_properties,
                   network_spec = nil, disk_locality = nil, environment = nil)
       with_thread_name("create_vm(#{agent_id}, ...)") do
+        File.open("/Users/cpi/workspace/bosh-openstack-cpi-release/cpi-log", 'w') { |file| file.write("environment=#{environment}") }
         @logger.info('Creating new server...')
         @logger.debug("Using scheduler hints: `#{cloud_properties['scheduler_hints']}'") if cloud_properties['scheduler_hints']
         registry_key = "vm-#{generate_unique_name}"
@@ -749,11 +750,6 @@ module Bosh::OpenStackCloud
             optional('use_nova_networking') => bool,
             optional('vm') => Hash,
           },
-          'registry' => {
-            'endpoint' => String,
-            'user' => String,
-            'password' => String,
-          },
           optional('agent') => Hash,
         }
         if Bosh::OpenStackCloud::Openstack.is_v3(auth_url)
@@ -771,11 +767,12 @@ module Bosh::OpenStackCloud
     end
 
     def initialize_registry
-      if @cpi_api_version >= 2 && stemcell_api_version >= 2
+      registry_properties = @options.dig('registry')
+      if ( @cpi_api_version >= 2 && stemcell_api_version >= 2 ) || registry_properties.nil?
         return Bosh::OpenStackCloud::NoopRegistry.new
       end
 
-      registry_properties = @options.fetch('registry')
+      # registry_properties = @options.fetch('registry')
       registry_endpoint   = registry_properties.fetch('endpoint')
       registry_user       = registry_properties.fetch('user')
       registry_password   = registry_properties.fetch('password')
