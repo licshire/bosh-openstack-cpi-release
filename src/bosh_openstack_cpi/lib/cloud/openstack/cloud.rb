@@ -28,7 +28,6 @@ module Bosh::OpenStackCloud
       @options = normalize_options(options)
 
       validate_options
-      @registry = initialize_registry
 
       @logger = Bosh::Clouds::Config.logger
 
@@ -94,6 +93,7 @@ module Bosh::OpenStackCloud
     #   ramdisk image file provided at the stemcell archive
     # @return [String] OpenStack image UUID of the stemcell
     def create_stemcell(image_path, cloud_properties)
+      ensure_registry
       with_thread_name("create_stemcell(#{image_path}...)") do
         stemcell_creator = StemcellCreator.new(@logger, @openstack, cloud_properties)
         stemcell = stemcell_creator.create(image_path, @stemcell_public_visibility)
@@ -108,6 +108,7 @@ module Bosh::OpenStackCloud
     #   deleted
     # @return [void]
     def delete_stemcell(stemcell_id)
+      ensure_registry
       with_thread_name("delete_stemcell(#{stemcell_id})") do
         @logger.info("Deleting stemcell `#{stemcell_id}'...")
 
@@ -135,6 +136,7 @@ module Bosh::OpenStackCloud
     # @return [String] OpenStack server UUID
     def create_vm(agent_id, stemcell_id, cloud_properties,
                   network_spec = nil, disk_locality = nil, environment = nil)
+      ensure_registry
       with_thread_name("create_vm(#{agent_id}, ...)") do
         File.open("/Users/cpi/workspace/bosh-openstack-cpi-release/cpi-log", 'w') { |file| file.write("environment=#{environment}") }
         @logger.info('Creating new server...')
@@ -172,6 +174,7 @@ module Bosh::OpenStackCloud
     # @param [String] server_id OpenStack server UUID
     # @return [void]
     def delete_vm(server_id)
+      ensure_registry
       with_thread_name("delete_vm(#{server_id})") do
         @logger.info("Deleting server `#{server_id}'...")
         server = openstack_server(server_id)
@@ -203,6 +206,7 @@ module Bosh::OpenStackCloud
     # @param [String] server_id OpenStack server UUID
     # @return [void]
     def reboot_vm(server_id)
+      ensure_registry
       with_thread_name("reboot_vm(#{server_id})") do
         server = openstack_server(server_id)
         cloud_error("Server `#{server_id}' not found") unless server
@@ -219,6 +223,7 @@ module Bosh::OpenStackCloud
     # @return [void]
     # @raise [Bosh::Clouds:NotSupported] If there's a network change that requires the recreation of the VM
     def configure_networks(server_id, network_spec)
+      ensure_registry
       with_thread_name("configure_networks(#{server_id}, ...)") do
         raise Bosh::Clouds::NotSupported,
               format('network configuration change requires VM recreation: %s', network_spec)
@@ -233,6 +238,7 @@ module Bosh::OpenStackCloud
     #   this disk will be attached to
     # @return [String] OpenStack volume UUID
     def create_disk(size, cloud_properties, server_id = nil)
+      ensure_registry
       volume_service_client = @openstack.volume
       with_thread_name("create_disk(#{size}, #{cloud_properties}, #{server_id})") do
         raise ArgumentError, 'Disk size needs to be an integer' unless size.is_a?(Integer)
@@ -289,6 +295,7 @@ module Bosh::OpenStackCloud
     # @return [void]
     # @raise [Bosh::Clouds::CloudError] if disk is not in available state
     def delete_disk(disk_id)
+      ensure_registry
       with_thread_name("delete_disk(#{disk_id})") do
         @logger.info("Deleting volume `#{disk_id}'...")
         volume = openstack_volume(disk_id)
@@ -311,6 +318,7 @@ module Bosh::OpenStackCloud
     # @param [String] disk_id OpenStack volume UUID
     # @return [void]
     def attach_disk(server_id, disk_id)
+      ensure_registry
       with_thread_name("attach_disk(#{server_id}, #{disk_id})") do
         server = openstack_server(server_id)
         cloud_error("Server `#{server_id}' not found") unless server
@@ -339,6 +347,7 @@ module Bosh::OpenStackCloud
     # @param [String] disk_id OpenStack volume UUID
     # @return [void]
     def detach_disk(server_id, disk_id)
+      ensure_registry
       with_thread_name("detach_disk(#{server_id}, #{disk_id})") do
         server = openstack_server(server_id)
         cloud_error("Server `#{server_id}' not found") unless server
@@ -366,6 +375,7 @@ module Bosh::OpenStackCloud
     # @return [String] OpenStack snapshot UUID
     # @raise [Bosh::Clouds::CloudError] if volume is not found
     def snapshot_disk(disk_id, metadata)
+      ensure_registry
       with_thread_name("snapshot_disk(#{disk_id})") do
         metadata = Hash[metadata.map { |key, value| [key.to_s, value] }]
         volume = openstack_volume(disk_id)
@@ -421,6 +431,7 @@ module Bosh::OpenStackCloud
     # @return [void]
     # @raise [Bosh::Clouds::CloudError] if snapshot is not in available state
     def delete_snapshot(snapshot_id)
+      ensure_registry
       with_thread_name("delete_snapshot(#{snapshot_id})") do
         @logger.info("Deleting snapshot `#{snapshot_id}'...")
         volume = @openstack.with_openstack { @openstack.volume }
@@ -444,6 +455,7 @@ module Bosh::OpenStackCloud
     # @param [Hash] metadata Metadata key/value pairs
     # @return [void]
     def set_vm_metadata(server_id, metadata)
+      ensure_registry
       with_thread_name("set_vm_metadata(#{server_id}, ...)") do
         server = openstack_server(server_id)
         cloud_error("Server `#{server_id}' not found") unless server
@@ -460,6 +472,7 @@ module Bosh::OpenStackCloud
     # @param [Hash] metadata Metadata key/value pairs
     # @return [void]
     def set_disk_metadata(disk_id, metadata)
+      ensure_registry
       with_thread_name("set_disk_metadata(#{disk_id}, ...)") do
         volume = openstack_volume(disk_id)
         cloud_error("Disk `#{disk_id}' not found") unless volume
@@ -491,6 +504,7 @@ module Bosh::OpenStackCloud
     #
     # @param [Fog::OpenStack::Compute::Server] server OpenStack server
     def update_agent_settings(server)
+      ensure_registry
       raise ArgumentError, 'Block is not provided' unless block_given?
       registry_key = registry_key_for(server)
       @logger.info("Updating settings for server `#{server.id}' with registry key `#{registry_key}'...")
@@ -511,6 +525,7 @@ module Bosh::OpenStackCloud
     # @param [String] disk_id volume Cloud ID
     # @param [Integer] new_size disk size in MiB
     def resize_disk(disk_id, new_size)
+      ensure_registry
       new_size_gib = mib_to_gib(new_size)
 
       with_thread_name("resize_disk(#{disk_id}, #{new_size_gib})") do
@@ -766,17 +781,17 @@ module Bosh::OpenStackCloud
       raise ArgumentError, "Invalid OpenStack cloud properties: #{e.inspect}"
     end
 
-    def initialize_registry
-      registry_properties = @options.dig('registry')
-      if ( @cpi_api_version >= 2 && stemcell_api_version >= 2 ) || registry_properties.nil?
-        return Bosh::OpenStackCloud::NoopRegistry.new
+    def ensure_registry
+      return if @registry
+      if ( @cpi_api_version >= 2 && stemcell_api_version >= 2 )
+        @registry = Bosh::OpenStackCloud::NoopRegistry.new
+      else
+        registry_properties = @options.fetch('registry')
+        registry_endpoint   = registry_properties.fetch('endpoint')
+        registry_user       = registry_properties.fetch('user')
+        registry_password   = registry_properties.fetch('password')
+        @registry = Bosh::Cpi::RegistryClient.new(registry_endpoint, registry_user, registry_password)
       end
-
-      # registry_properties = @options.fetch('registry')
-      registry_endpoint   = registry_properties.fetch('endpoint')
-      registry_user       = registry_properties.fetch('user')
-      registry_password   = registry_properties.fetch('password')
-      Bosh::Cpi::RegistryClient.new(registry_endpoint, registry_user, registry_password)
     end
 
     def stemcell_api_version
